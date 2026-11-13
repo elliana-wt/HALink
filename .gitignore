@@ -1,0 +1,8 @@
+.build/
+dist/
+.DS_Store
+.codex/
+.agents/
+work/
+*.[dD][mM][gG]
+[Aa][Gg][Ee][Nn][Tt][Ss].[Mm][Dd]
