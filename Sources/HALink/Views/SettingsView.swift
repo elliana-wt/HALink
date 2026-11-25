@@ -5,6 +5,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             ConnectionSection(model: model)
+            HomePhotoSettings(photo: model.homePhoto)
             Section("通用") {
                 Toggle("登录时启动 HALink", isOn: Binding(get: { model.launchAtLogin }, set: model.setLogin))
             }

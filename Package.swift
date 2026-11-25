@@ -9,6 +9,8 @@ let package = Package(
         .target(name: "HALinkCore"),
         .executableTarget(name: "HALink", dependencies: ["HALinkCore"],
                           swiftSettings: [.defaultIsolation(MainActor.self), .enableUpcomingFeature("NonisolatedNonsendingByDefault")]),
-        .testTarget(name: "HALinkCoreTests", dependencies: ["HALinkCore"])
+        .testTarget(name: "HALinkCoreTests", dependencies: ["HALinkCore"], exclude: ["Fixtures"]),
+        .testTarget(name: "HALinkTests", dependencies: ["HALink"],
+                    swiftSettings: [.defaultIsolation(MainActor.self), .enableUpcomingFeature("NonisolatedNonsendingByDefault")])
     ]
 )

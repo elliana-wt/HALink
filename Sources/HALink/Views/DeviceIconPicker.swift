@@ -81,7 +81,7 @@ struct DeviceIconPicker: View {
                 }
                 HStack {
                     ColorPicker("图标颜色", selection: Binding(
-                        get: { color?.swiftUIColor ?? .teal },
+                        get: { color?.swiftUIColor ?? .orange },
                         set: { color = DeviceIconColor(color: $0) }
                     ), supportsOpacity: false)
                     if color != nil {

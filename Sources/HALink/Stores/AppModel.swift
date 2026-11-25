@@ -31,16 +31,24 @@ final class AppModel {
     private(set) var busyIDs: Set<UUID> = []
     private(set) var lastAction: String?
     private(set) var lastRefresh: Date?
+    private(set) var realtimeStatus: HARealtime.Status = .stopped
+    private(set) var homeMetadata = HAHomeMetadata()
     private(set) var updateState: UpdateState = .idle
     var generalError: String?
     var launchAtLogin = SMAppService.mainApp.status == .enabled
     var isRecording = false
+    let homePhoto: HomePhotoStore
     @ObservationIgnored private let configStore = ConfigurationStore()
     @ObservationIgnored private let keychain = KeychainStore()
     @ObservationIgnored let hotKeys = HotKeyManager()
     @ObservationIgnored private var client: HAClient?
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var pollTask: Task<Void, Never>?
+    @ObservationIgnored private var realtime: HARealtime?
+    @ObservationIgnored private var entityRevisions: [String: UInt64] = [:]
+    @ObservationIgnored private var pendingControls: [String: [HAControl]] = [:]
+    @ObservationIgnored private var controlTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var climateModes: [String: String] = [:]
     @ObservationIgnored private var refreshing = false
     @ObservationIgnored private var stateRevision: UInt64 = 0
     @ObservationIgnored private var lastPress: [String: Date] = [:]
@@ -63,24 +71,35 @@ final class AppModel {
         }
     }
 
-    init() {
-        do { config = try configStore.load() }
-        catch { generalError = "无法读取设备配置。为保护现有数据，本次不会覆盖它。"; loadFailed = true }
+    init(configuration: Configuration? = nil, client: HAClient? = nil, homePhoto: HomePhotoStore = HomePhotoStore()) {
+        self.client = client
+        self.homePhoto = homePhoto
+        if let configuration { config = configuration }
+        else {
+            do { config = try configStore.load() }
+            catch { generalError = "无法读取设备配置。为保护现有数据，本次不会覆盖它。"; loadFailed = true }
+        }
         hotKeys.onPress = { [weak self] id in self?.run(id) }
     }
 
     func start() async {
-        if !address.isEmpty {
+        if client != nil {
+            connectionState = .offline
+            await refresh()
+            startRealtime()
+        } else if !address.isEmpty {
             do {
                 let endpoint = try Endpoint(address)
                 if let token = try keychain.read(address: address) {
                     client = try HAClient(endpoint: endpoint, token: token)
                     connectionState = .offline
                     await refresh()
+                    startRealtime()
                 } else { connectionError = "请在连接设置中重新填写 Token。" }
             } catch { connectionError = error.localizedDescription }
         }
         rebindShortcuts()
+        pollTask?.cancel()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(15)) } catch { break }
@@ -97,6 +116,9 @@ final class AppModel {
         connectionError = nil
         connectionState = .connecting
         generation = UUID()
+        realtime?.stop()
+        realtimeStatus = .stopped
+        cancelControls()
         let attempt = generation
         do {
             let endpoint = try Endpoint(input)
@@ -120,14 +142,18 @@ final class AppModel {
             client = candidate
             entities = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
             services = registered
+            homeMetadata = HAHomeMetadata(); entityRevisions = [:]; climateModes = [:]
+            for entity in fetched { rememberMode(entity) }
             actionErrors.removeAll(); lastAction = nil
             lastRefresh = Date(); connectionState = .connected
             rebindShortcuts()
+            startRealtime()
             return true
         } catch {
             guard attempt == generation else { return false }
             connectionError = friendly(error)
             connectionState = client == nil ? .notConfigured : previousState
+            startRealtime()
             return false
         }
     }
@@ -142,21 +168,174 @@ final class AppModel {
             async let states = client.states()
             async let actions = client.services()
             let (fetched, registered) = try await (states, actions)
-            guard attempt == generation, revision == stateRevision else { return }
-            entities = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+            guard attempt == generation else { return }
             services = registered
+            guard revision == stateRevision else { return }
+            entities = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+            for entity in fetched { rememberMode(entity) }
             lastRefresh = Date(); connectionState = .connected; connectionError = nil
         } catch {
             guard attempt == generation, revision == stateRevision else { return }
-            connectionState = .offline; connectionError = friendly(error)
+            if realtimeStatus != .live { connectionState = .offline; connectionError = friendly(error) }
         }
     }
 
     func disconnect() {
         generation = UUID()
+        realtime?.stop(); realtime = nil
+        realtimeStatus = .stopped
+        cancelControls()
+        homeMetadata = HAHomeMetadata(); entityRevisions = [:]; climateModes = [:]
         client = nil; entities.removeAll(); services.removeAll()
         connectionState = .notConfigured; connectionError = nil; lastAction = nil
         hotKeys.stop()
+    }
+
+    func stop() {
+        pollTask?.cancel(); pollTask = nil
+        realtime?.stop(); realtime = nil
+        cancelControls(); hotKeys.stop()
+    }
+
+    private func startRealtime() {
+        realtime?.stop()
+        guard let client else { realtime = nil; return }
+        let attempt = generation
+        let realtime = client.realtime()
+        self.realtime = realtime
+        realtime.onStatus = { [weak self] status in
+            guard let self, self.generation == attempt else { return }
+            self.realtimeStatus = status
+            if status == .live { self.connectionState = .connected; self.connectionError = nil }
+            if status == .unauthorized { self.connectionState = .offline; self.connectionError = HAError.unauthorized.localizedDescription }
+        }
+        realtime.onUpdate = { [weak self] update in
+            guard let self, self.generation == attempt else { return }
+            switch update {
+            case .snapshot(let states):
+                self.stateRevision &+= 1
+                let previousIDs = Set(self.entities.keys)
+                self.entities = Dictionary(states.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+                for entity in states { self.rememberMode(entity) }
+                for id in previousIDs.union(self.entities.keys) { self.entityRevisions[id, default: 0] &+= 1 }
+                self.lastRefresh = Date()
+            case .change(let change):
+                self.stateRevision &+= 1
+                self.entityRevisions[change.entityID, default: 0] &+= 1
+                self.entities[change.entityID] = change.state
+                if let entity = change.state { self.rememberMode(entity) }
+                self.lastRefresh = Date()
+            case .metadata(let metadata): self.homeMetadata = metadata
+            }
+        }
+        realtime.start()
+    }
+
+    func areaName(for entityID: String) -> String? {
+        guard let id = homeMetadata.areaID(for: entityID) else { return nil }
+        return homeMetadata.areas.first(where: { $0.id == id })?.name
+    }
+
+    func supportsDetails(_ binding: DeviceBinding) -> Bool {
+        guard let entity = entities[binding.entityID] else { return false }
+        return Self.supportsDetails(for: entity, services: services)
+    }
+
+    static func supportsDetails(for entity: HAEntity, services: Set<String>) -> Bool {
+        switch entity.domain {
+        case "light":
+            guard services.contains("light.turn_on") else { return false }
+            return entity.supportsBrightness || entity.colorTemperatureRange != nil || entity.supportsColor
+        case "climate":
+            let a = entity.attributes
+            if entity.temperatureRange != nil, entity.supportsTargetRange || entity.supportsTargetTemperature,
+               services.contains("climate.set_temperature") { return true }
+            if let modes = a.hvacModes, !modes.isEmpty, services.contains("climate.set_hvac_mode") { return true }
+            if entity.hasFeature(8), let modes = a.fanModes, !modes.isEmpty, services.contains("climate.set_fan_mode") { return true }
+            if entity.hasFeature(32), let modes = a.swingModes, !modes.isEmpty, services.contains("climate.set_swing_mode") { return true }
+            if entity.hasFeature(512), let modes = a.swingHorizontalModes, !modes.isEmpty,
+               services.contains("climate.set_swing_horizontal_mode") { return true }
+            if entity.hasFeature(16), let presets = a.presetModes, !presets.isEmpty,
+               services.contains("climate.set_preset_mode") { return true }
+            return false
+        default:
+            return false
+        }
+    }
+
+    /// Coalesce unsent slider values and serialize commands for the same physical entity.
+    func setControl(_ id: UUID, _ control: HAControl) {
+        guard isConnected, client != nil, let binding = devices.first(where: { $0.id == id }),
+              entities[binding.entityID]?.isAvailable == true else { return }
+        let entityID = binding.entityID
+        pendingControls[entityID, default: []].removeAll { $0.key == control.key }
+        pendingControls[entityID, default: []].append(control)
+        guard controlTasks[entityID] == nil else { return }
+        let attempt = generation
+        controlTasks[entityID] = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled, attempt == self.generation,
+                  let queue = self.pendingControls[entityID], !queue.isEmpty {
+                let related = Set(self.devices.filter { $0.entityID == entityID }.map(\.id))
+                if !self.busyIDs.isDisjoint(with: related) {
+                    do { try await Task.sleep(for: .milliseconds(50)) } catch { break }
+                    continue
+                }
+                guard let client = self.client, let entity = self.entities[entityID] else { break }
+                let command = self.pendingControls[entityID]!.removeFirst()
+                self.busyIDs.formUnion(related)
+                self.stateRevision &+= 1
+                for id in related { self.actionErrors[id] = nil }
+                do {
+                    let request = try HAControlRequest(entity: entity, control: command, services: self.services)
+                    try await client.perform(request)
+                    guard attempt == self.generation else { return }
+                    self.lastAction = "指令已发送：\(binding.name)"
+                    do {
+                        var updated = try await self.readState(entityID, client: client, attempt: attempt)
+                        for _ in 0..<4 where !request.isConfirmed(by: updated) {
+                            try await Task.sleep(for: .milliseconds(400))
+                            guard attempt == self.generation else { return }
+                            updated = try await self.readState(entityID, client: client, attempt: attempt)
+                        }
+                        if !request.isConfirmed(by: updated) {
+                            for id in related { self.actionErrors[id] = "指令已发送，设备状态尚未确认。请稍后刷新。" }
+                        }
+                    }
+                    catch {
+                        guard attempt == self.generation else { return }
+                        for id in related { self.actionErrors[id] = "指令已发送，但未能确认设备状态。请刷新后查看。" }
+                    }
+                } catch {
+                    guard attempt == self.generation else { return }
+                    for id in related { self.actionErrors[id] = self.friendly(error) }
+                    // Reconcile after errors, without replaying the command.
+                    _ = try? await self.readState(entityID, client: client, attempt: attempt)
+                }
+                guard attempt == self.generation else { return }
+                self.busyIDs.subtract(related)
+            }
+            guard attempt == self.generation else { return }
+            self.controlTasks[entityID] = nil
+            self.pendingControls[entityID] = nil
+        }
+    }
+
+    private func cancelControls() {
+        for task in controlTasks.values { task.cancel() }
+        controlTasks = [:]; pendingControls = [:]; busyIDs = []; lastPress = [:]
+    }
+
+    private func readState(_ id: String, client: HAClient, attempt: UUID) async throws -> HAEntity {
+        let revision = entityRevisions[id, default: 0]
+        let fetched = try await client.state(id)
+        guard attempt == generation else { throw CancellationError() }
+        if entityRevisions[id, default: 0] == revision { entities[id] = fetched; rememberMode(fetched) }
+        return entities[id] ?? fetched
+    }
+
+    private func rememberMode(_ entity: HAEntity) {
+        if entity.domain == "climate", entity.powerState == true { climateModes[entity.id] = entity.state }
     }
 
     @discardableResult
@@ -262,11 +441,10 @@ final class AppModel {
         lastPress[binding.entityID] = Date()
         for relatedID in relatedIDs { actionErrors[relatedID] = nil }
         Task {
-            defer { busyIDs.subtract(relatedIDs) }
+            defer { if attempt == generation { busyIDs.subtract(relatedIDs) } }
             do {
-                let current = try await client.state(binding.entityID)
+                let current = try await readState(binding.entityID, client: client, attempt: attempt)
                 guard attempt == generation else { return }
-                entities[current.id] = current
                 guard current.isAvailable else { actionErrors[id] = "设备当前不可用，请检查设备连接。"; return }
                 let expectedPower: Bool? = current.powerState.flatMap { state in
                     switch binding.action {
@@ -276,20 +454,26 @@ final class AppModel {
                     default: nil
                     }
                 }
-                try await client.perform(binding)
+                if current.domain == "climate", binding.action == .turnOn || binding.action == .turnOff,
+                   !(current.hasFeature(binding.action == .turnOn ? 256 : 128) && services.contains("climate.\(binding.action.rawValue)")) {
+                    let modes = current.attributes.hvacModes ?? []
+                    let previous = climateModes[current.id].flatMap { modes.contains($0) ? $0 : nil }
+                    let mode = binding.action == .turnOff ? "off" : previous ?? modes.first(where: { $0 != "off" }) ?? ""
+                    try await client.perform(HAControlRequest(entity: current, control: .hvacMode(mode), services: services))
+                } else {
+                    try await client.perform(binding)
+                }
                 guard attempt == generation else { return }
                 // Never infer power state from the clicked switch or replay a toggle on failure.
                 do {
-                    var updated = try await client.state(binding.entityID)
+                    var updated = try await readState(binding.entityID, client: client, attempt: attempt)
                     guard attempt == generation else { return }
-                    entities[updated.id] = updated
                     if let expectedPower {
                         for _ in 0..<4 where updated.powerState != expectedPower {
                             try await Task.sleep(for: .milliseconds(500))
                             guard attempt == generation else { return }
-                            updated = try await client.state(binding.entityID)
+                            updated = try await readState(binding.entityID, client: client, attempt: attempt)
                             guard attempt == generation else { return }
-                            entities[updated.id] = updated
                         }
                         if updated.powerState != expectedPower {
                             actionErrors[id] = "指令已发送，设备状态尚未确认。请刷新后查看。"

@@ -14,6 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         showSettings()
+        Task {
+            await model.homePhoto.loadIfNeeded()
+            menuBar?.prepareWindow()
+        }
         Task { await model.start() }
     }
     func showSettings(page: SettingsPage? = nil) {
@@ -23,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showSettings(); return true
     }
-    func applicationWillTerminate(_ notification: Notification) { model.hotKeys.stop() }
+    func applicationWillTerminate(_ notification: Notification) { model.stop() }
 
     private func checkHotkeys() {
         let first = HotKeyManager(), second = HotKeyManager()
@@ -50,6 +54,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct HALinkApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    init() {
+        UserDefaults.standard.set(1, forKey: "AppleAccentColor")
+    }
     var body: some Scene {
         Settings { EmptyView() }
             .commands {

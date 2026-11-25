@@ -1,6 +1,6 @@
 import Foundation
 
-private final class NoRedirects: NSObject, URLSessionTaskDelegate, Sendable {
+final class NoRedirects: NSObject, URLSessionTaskDelegate, Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest,
@@ -44,6 +44,13 @@ public struct HAClient: Sendable {
         guard DeviceAction.candidates(for: domain).contains(binding.action) else { throw HAError.invalidResponse }
         let body = try JSONEncoder().encode(["entity_id": binding.entityID])
         _ = try await request("services/\(domain)/\(binding.action.rawValue)", method: "POST", body: body)
+    }
+    public func perform(_ command: HAControlRequest) async throws {
+        _ = try await request("services/\(command.domain)/\(command.service)", method: "POST",
+                              body: JSONEncoder().encode(command.data))
+    }
+    @MainActor public func realtime() -> HARealtime {
+        HARealtime(endpoint: endpoint, token: token)
     }
     public func makeRequest(_ path: String, method: String = "GET", body: Data? = nil) -> URLRequest {
         var request = URLRequest(url: endpoint.api(path), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)

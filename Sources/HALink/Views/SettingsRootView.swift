@@ -7,7 +7,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         switch self { case .devices: "我的设备"; case .settings: "设置" }
     }
     var icon: String {
-        switch self { case .devices: "keyboard"; case .settings: "gearshape" }
+        switch self { case .devices: "house"; case .settings: "gearshape" }
     }
 }
 
@@ -52,6 +52,7 @@ struct SettingsRootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .toolbarVisibility(.visible, for: .windowToolbar)
+        .tint(.orange)
         .frame(minWidth: SettingsWindowController.fixedContentSize.width,
                minHeight: SettingsWindowController.fixedContentSize.height)
         .alert("未能保存", isPresented: Binding(get: { model.generalError != nil }, set: { if !$0 { model.generalError = nil } })) {
@@ -62,10 +63,11 @@ struct SettingsRootView: View {
 
 struct ConnectionBadge: View {
     let state: AppModel.ConnectionState
+    var textColor: Color = .secondary
     var body: some View {
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 6, height: 6)
-            Text(state.title).foregroundStyle(.secondary)
+            Text(state.title).foregroundStyle(textColor)
         }
     }
     private var color: Color {

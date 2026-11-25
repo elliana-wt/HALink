@@ -11,6 +11,7 @@ struct ServerEditor: View {
     @State private var error: String?
     @State private var saving = false
     @State private var removing = false
+    @State private var discovery = HADiscovery()
 
     init(model: AppModel, server: ServerConnection?) {
         self.model = model
@@ -26,6 +27,36 @@ struct ServerEditor: View {
                 .padding(22)
             Divider()
             Form {
+                if server == nil {
+                    Section {
+                        HStack {
+                            Text("局域网中的 Home Assistant")
+                            Spacer()
+                            if discovery.searching { ProgressView().controlSize(.small) }
+                            Button(discovery.searching ? "停止搜索" : "重新搜索") {
+                                if discovery.searching { discovery.stop() } else { discovery.start() }
+                            }
+                        }
+                        ForEach(discovery.servers) { found in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(found.name).fontWeight(.medium)
+                                    Text(found.address).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                                }
+                                Spacer()
+                                Button(address == found.address ? "已填入" : "使用") {
+                                    address = found.address
+                                    if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { name = found.name }
+                                }.disabled(address == found.address)
+                            }
+                        }
+                        if let message = discovery.message {
+                            Text(message).font(.caption).foregroundStyle(.secondary)
+                        }
+                    } footer: {
+                        Text("选择服务器后，仍需填写访问令牌。")
+                    }
+                }
                 Section {
                     TextField("服务器名称", text: $name, prompt: Text("例如：家里、办公室"))
                     TextField("本地地址", text: $address, prompt: Text("http://192.168.1.10:8123"))
@@ -37,7 +68,7 @@ struct ServerEditor: View {
                     .autocorrectionDisabled()
                     .onSubmit(save)
                 } footer: {
-                    Text("在 HA 的“个人资料 → 安全 → 长期访问令牌”中创建 Token。Token 仅保存在这台 Mac 的系统钥匙串中。")
+                    Text("在 HA 的“个人资料 → 安全 → 长期访问令牌”中创建 Token。Token 仅保存在这台 Mac 的本机配置目录中，仅当前用户可读写。")
                 }
                 if let error {
                     Section {
@@ -78,7 +109,9 @@ struct ServerEditor: View {
             }
             .padding(18)
         }
-        .frame(width: 580, height: 440)
+        .frame(width: 580, height: server == nil ? 610 : 440)
+        .task { if server == nil { discovery.start() } }
+        .onDisappear { discovery.stop() }
         .interactiveDismissDisabled(saving)
         .confirmationDialog("移除“\(server?.name ?? "")”？", isPresented: $removing) {
             Button("移除服务器", role: .destructive) {

@@ -15,7 +15,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.contentViewController = host
         window.title = "HALink"
         window.titleVisibility = .visible
-        window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified
         window.contentMinSize = Self.fixedContentSize
         window.contentMaxSize = Self.fixedContentSize

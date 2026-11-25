@@ -71,7 +71,9 @@ private struct DeviceRow: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 DeviceIconTile(icon: binding.icon, fallback: entity?.icon ?? "powerplug",
-                               color: binding.iconColor, isActive: entity?.powerState == true)
+                               color: binding.iconColor,
+                               tintOverride: entity.flatMap(DeviceControlStyle.climateTint),
+                               isActive: entity?.powerState == true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(binding.name).font(.headline).lineLimit(1)
                     Text(binding.entityID).font(.caption).foregroundStyle(.secondary)
@@ -92,14 +94,18 @@ private struct DeviceRow: View {
                 }
                 .font(.callout).foregroundStyle(.secondary).fixedSize()
                 Button(action: edit) {
-                    Text(binding.shortcut?.displayName ?? "设置快捷键")
+                    Text("设置快捷键")
+                        .hidden()
+                        .accessibilityHidden(true)
+                        .overlay {
+                            Text(binding.shortcut?.displayName ?? "设置快捷键")
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
                         .font(.system(.callout, design: .monospaced))
                         .padding(.horizontal, 12).padding(.vertical, 5)
                         .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
                 }.buttonStyle(.plain).help("编辑快捷键").fixedSize()
-                if model.supportsPowerControl(binding) {
-                    DevicePowerToggle(model: model, binding: binding, showsProgress: false).fixedSize()
-                }
                 Button(action: edit) {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12, weight: .semibold))
