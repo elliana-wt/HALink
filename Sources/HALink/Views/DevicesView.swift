@@ -75,7 +75,7 @@ private struct DeviceRow: View {
                                tintOverride: entity.flatMap(DeviceControlStyle.climateTint),
                                isActive: entity?.powerState == true)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(binding.name).font(.headline).lineLimit(1)
+                    Text(binding.name).font(.headline.weight(.medium)).lineLimit(1)
                     Text(binding.entityID).font(.caption).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                 }

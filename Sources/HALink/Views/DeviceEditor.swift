@@ -27,7 +27,7 @@ struct DeviceEditor: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(isNew ? "添加设备" : "编辑快捷控制").font(.title2.weight(.semibold))
+                    Text(isNew ? "添加设备" : "编辑快捷控制").font(.title2.weight(.medium))
                     Text("一个设备可以添加多个动作，分别设置快捷键。")
                         .font(.callout).foregroundStyle(.secondary)
                 }
@@ -72,7 +72,7 @@ struct DeviceEditor: View {
                             DeviceIconTile(icon: draft.icon, fallback: chosen?.icon ?? "powerplug",
                                            color: draft.iconColor)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(chosen?.name ?? draft.name).font(.headline)
+                                Text(chosen?.name ?? draft.name).font(.headline.weight(.medium))
                                 Text(draft.entityID).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                             }
                             Spacer()

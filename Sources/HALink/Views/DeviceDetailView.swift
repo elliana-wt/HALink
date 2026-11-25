@@ -23,7 +23,7 @@ struct DeviceDetailView: View {
                     }
                 }.buttonStyle(.plain).accessibilityLabel("返回设备列表").help("返回设备列表")
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(binding.name).font(.title3.weight(.semibold)).lineLimit(2)
+                    Text(binding.name).font(.title3.weight(.medium)).lineLimit(2)
                     Text(subtitle).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 4)

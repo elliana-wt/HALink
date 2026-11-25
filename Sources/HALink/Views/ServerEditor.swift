@@ -23,7 +23,7 @@ struct ServerEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(server == nil ? "添加新服务器" : "服务器设定")
-                .font(.title2.weight(.semibold))
+                .font(.title2.weight(.medium))
                 .padding(22)
             Divider()
             Form {

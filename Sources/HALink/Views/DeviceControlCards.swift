@@ -24,7 +24,7 @@ struct LightDeviceCard: View {
             HStack(spacing: 10) {
                 DeviceIconPowerButton(model: model, binding: binding, fallback: "lightbulb")
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(binding.name).font(.headline).lineLimit(2)
+                    Text(binding.name).font(.headline.weight(.medium)).lineLimit(2)
                     Text(summary).font(.caption).foregroundStyle(isActive ? Color.orange : .secondary).lineLimit(1)
                 }.frame(maxWidth: .infinity, alignment: .leading).allowsHitTesting(false)
                 if pending { ProgressView().controlSize(.mini).allowsHitTesting(false) }
@@ -77,7 +77,7 @@ struct ClimateDeviceCard: View {
             HStack(spacing: 10) {
                 DeviceIconPowerButton(model: model, binding: binding, fallback: "air.conditioner.horizontal")
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(binding.name).font(.headline).lineLimit(2)
+                    Text(binding.name).font(.headline.weight(.medium)).lineLimit(2)
                     Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }.frame(maxWidth: .infinity, alignment: .leading).allowsHitTesting(false)
                 if let entity, entity.supportsTargetTemperature, let target = entity.attributes.temperature,
@@ -85,7 +85,7 @@ struct ClimateDeviceCard: View {
                     HStack(spacing: 10) {
                         temperatureButton("minus", entity: entity, value: target, direction: -1)
                         Text("\(DeviceControlStyle.number(targetDraft ?? target))°")
-                            .font(.system(size: 24, weight: .semibold, design: .rounded))
+                            .font(.system(size: 24, weight: .medium, design: .rounded))
                             .monospacedDigit()
                             .frame(minWidth: 44)
                             .allowsHitTesting(false)
@@ -165,7 +165,7 @@ struct OtherDeviceCard: View {
                                isActive: isActive)
                     .allowsHitTesting(false)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(binding.name).font(.headline).lineLimit(2)
+                    Text(binding.name).font(.headline.weight(.medium)).lineLimit(2)
                     Text(summary)
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }.frame(maxWidth: .infinity, alignment: .leading).allowsHitTesting(false)
@@ -298,6 +298,7 @@ private struct DeviceCardSlider: ViewModifier {
     @Binding var draft: Double?
     let commit: (Double) -> Void
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.usesHomePhoto) private var usesHomePhoto
     @State private var dragging = false
     @State private var cardWidth: CGFloat = 0
     @State private var cursorState = SliderCursorState()
@@ -308,29 +309,72 @@ private struct DeviceCardSlider: ViewModifier {
         guard let currentValue else { return 0 }
         return max(0, min(1, currentValue / 100))
     }
-    private var activeFillOpacity: Double {
-        if colorScheme == .dark {
-            return dragging ? 0.30 : 0.22
+    private var activeFill: Color {
+        if usesHomePhoto {
+            return Color.white.opacity(dragging ? 0.30 : 0.22)
         }
-        return dragging ? 0.86 : 0.72
+        if colorScheme == .dark {
+            return Color.primary.opacity(dragging ? 0.34 : 0.24)
+        }
+        return Color.white.opacity(dragging ? 0.35 : 0.18)
+    }
+    private var lightModeInactiveFill: Color {
+        Color.primary.opacity(0.16)
+    }
+    private var borderOpacity: Double {
+        colorScheme == .dark ? 0.10 : 0.09
     }
 
     func body(content: Content) -> some View {
         content
             .background {
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(Color.primary.opacity(0.045))
-                    if currentValue != nil {
-                        HorizontalFillShape(fraction: fraction)
-                            .fill(Color.white.opacity(activeFillOpacity))
-                            .animation(dragging ? nil : .interactiveSpring(duration: 0.2), value: fraction)
-                    } else if active {
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Color.white.opacity(activeFillOpacity))
+                    if usesHomePhoto {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(Color.primary.opacity(0.045))
+                        if currentValue != nil {
+                            HorizontalFillShape(fraction: fraction)
+                                .fill(activeFill)
+                                .animation(dragging ? nil : .interactiveSpring(duration: 0.2), value: fraction)
+                        } else if active {
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(activeFill)
+                        }
+                    } else {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(.ultraThinMaterial.materialActiveAppearance(.active))
+                            .opacity(0.4)
+                        if colorScheme == .light {
+                            if currentValue != nil {
+                                HorizontalFillShape(fraction: fraction, isTrailing: true)
+                                    .fill(lightModeInactiveFill)
+                                    .animation(dragging ? nil : .interactiveSpring(duration: 0.2), value: fraction)
+                                HorizontalFillShape(fraction: fraction)
+                                    .fill(activeFill)
+                                    .animation(dragging ? nil : .interactiveSpring(duration: 0.2), value: fraction)
+                            } else {
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .fill(active ? activeFill : lightModeInactiveFill)
+                            }
+                        } else {
+                            if currentValue != nil {
+                                HorizontalFillShape(fraction: fraction)
+                                    .fill(activeFill)
+                                    .animation(dragging ? nil : .interactiveSpring(duration: 0.2), value: fraction)
+                            } else if active {
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .fill(activeFill)
+                            }
+                        }
                     }
                 }
-                .clipShape(.rect(cornerRadius: 20))
+                .clipShape(.rect(cornerRadius: 20, style: .continuous))
+                .overlay {
+                    if !usesHomePhoto {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(borderOpacity), lineWidth: 1)
+                    }
+                }
                 .allowsHitTesting(false)
             }
             .contentShape(.rect(cornerRadius: 20))
@@ -410,6 +454,7 @@ private final class SliderCursorState {
 
 private nonisolated struct HorizontalFillShape: Shape {
     var fraction: Double
+    var isTrailing = false
 
     var animatableData: Double {
         get { fraction }
@@ -417,6 +462,11 @@ private nonisolated struct HorizontalFillShape: Shape {
     }
 
     func path(in rect: CGRect) -> Path {
+        if isTrailing {
+            guard fraction < 1 else { return Path() }
+            let startX = rect.minX + rect.width * fraction
+            return Path(CGRect(x: startX, y: rect.minY, width: rect.maxX - startX, height: rect.height))
+        }
         guard fraction > 0 else { return Path() }
         return Path(CGRect(x: rect.minX, y: rect.minY, width: rect.width * fraction, height: rect.height))
     }
@@ -425,13 +475,42 @@ private nonisolated struct HorizontalFillShape: Shape {
 private struct DeviceCardSurface: ViewModifier {
     let active: Bool
     @Environment(\.colorScheme) private var colorScheme
-    private var activeFillOpacity: Double { colorScheme == .dark ? 0.22 : 0.72 }
+    @Environment(\.usesHomePhoto) private var usesHomePhoto
+
+    private var borderOpacity: Double {
+        colorScheme == .dark ? 0.10 : 0.09
+    }
+
     func body(content: Content) -> some View {
         content
             .background {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(active ? Color.white.opacity(activeFillOpacity) : Color.primary.opacity(0.045))
-                    .allowsHitTesting(false)
+                Group {
+                    if usesHomePhoto {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(active ? Color.white.opacity(0.22) : Color.primary.opacity(0.045))
+                    } else {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(.ultraThinMaterial.materialActiveAppearance(.active))
+                                .opacity(0.4)
+                            if colorScheme == .light {
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .fill(active ? Color.white.opacity(0.18) : Color.primary.opacity(0.16))
+                            } else if active {
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .fill(Color.primary.opacity(0.24))
+                            }
+                        }
+                    }
+                }
+                .clipShape(.rect(cornerRadius: 20, style: .continuous))
+                .overlay {
+                    if !usesHomePhoto {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(borderOpacity), lineWidth: 1)
+                    }
+                }
+                .allowsHitTesting(false)
             }
     }
 }

@@ -125,6 +125,7 @@ struct MenuBarView: View {
                                     .transition(.opacity)
                             }
                             .animation(.easeInOut(duration: 0.45), value: photo.id)
+                            .overlay(Color.black.opacity(0.2))
                             .frame(width: MenuBarLayout.width, height: backdropHeight, alignment: .top)
                             .opacity(detail != nil ? 1 : 0)
                             .animation(.easeInOut(duration: 0.25), value: detailID != nil)
@@ -300,7 +301,7 @@ struct MenuBarView: View {
     private func header(activeHomePhoto: HomePhotoStore.Asset?) -> some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(model.currentServerName).font(.title2.weight(.bold)).lineLimit(2)
+                Text(model.currentServerName).font(.title2.weight(.medium)).lineLimit(2)
                 HStack(spacing: 7) {
                     ConnectionBadge(state: model.connectionState,
                                     textColor: activeHomePhoto?.backdrop == nil ? .secondary : .white.opacity(0.86)).font(.caption)
@@ -359,7 +360,7 @@ struct MenuBarView: View {
     }
     private func roomButton(_ title: String, selection: MenuBarRoom) -> some View {
         Button { room = selection } label: {
-            Text(title).font(.callout.weight(room == selection ? .semibold : .regular)).lineLimit(1)
+            Text(title).font(.callout.weight(room == selection ? .medium : .regular)).lineLimit(1)
                 .padding(.horizontal, 14).padding(.vertical, 8)
                 .background(Color.primary.opacity(room == selection ? 0.12 : 0), in: .capsule)
                 .contentShape(.capsule)
@@ -368,7 +369,7 @@ struct MenuBarView: View {
 
     private func overviewHeader(activeDeviceCount: Int) -> some View {
         HStack {
-            Text(roomTitle).font(.headline)
+            Text(roomTitle).font(.headline.weight(.medium))
             Text("\(activeDeviceCount) 个开启")
                 .font(.caption).foregroundStyle(.secondary)
             Spacer()
@@ -497,7 +498,7 @@ struct MenuBarView: View {
     }
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Text("还没有添加设备").font(.headline)
+            Text("还没有添加设备").font(.headline.weight(.medium))
             Text(model.isConnected ? "添加常用设备，即可在这里快速控制。" : "先在设置中连接 Home Assistant。")
                 .font(.callout).foregroundStyle(.secondary)
             Button(model.isConnected ? "添加设备" : "打开设置") { showSettings(model.isConnected ? .devices : .settings) }
@@ -652,6 +653,7 @@ private struct PanelGlassBackground: ViewModifier {
 
 private struct SceneCardSurface: ViewModifier {
     let usesHomePhoto: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         if usesHomePhoto {
@@ -660,9 +662,16 @@ private struct SceneCardSurface: ViewModifier {
                 .contentShape(.rect(cornerRadius: 20))
         } else {
             content
-                .background { RoundedRectangle(cornerRadius: 20).fill(Color.primary.opacity(0.05)) }
-                .overlay { RoundedRectangle(cornerRadius: 20).stroke(Color.primary.opacity(0.07)) }
-                .contentShape(.rect(cornerRadius: 20))
+                .background {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(.ultraThinMaterial.materialActiveAppearance(.active))
+                        .opacity(0.4)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.09), lineWidth: 1)
+                }
+                .contentShape(.rect(cornerRadius: 20, style: .continuous))
         }
     }
 }

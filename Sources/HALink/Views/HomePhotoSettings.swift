@@ -105,7 +105,7 @@ struct HomePhotoSettings: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text(appearance.title)
-                    .font(.headline)
+                    .font(.headline.weight(.medium))
                 HStack(spacing: 8) {
                     Button(asset == nil ? "选择…" : "更换…") {
                         importTarget = appearance

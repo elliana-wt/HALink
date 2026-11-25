@@ -31,7 +31,7 @@ struct SettingsRootView: View {
             .safeAreaInset(edge: .bottom) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(model.currentServerName)
-                        .font(.headline).foregroundStyle(.primary)
+                        .font(.headline.weight(.medium)).foregroundStyle(.primary)
                         .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     ConnectionBadge(state: model.connectionState)
                         .font(.caption)

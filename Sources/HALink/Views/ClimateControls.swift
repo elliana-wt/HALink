@@ -6,6 +6,7 @@ struct ClimateControls: View {
     let binding: DeviceBinding
     let entity: HAEntity
     @State private var targetDraft: Double?
+    @Environment(\.usesHomePhoto) private var usesHomePhoto
     @Environment(\.homePhotoTheme) private var homePhotoTheme
     private var enabled: Bool { model.isConnected && entity.isAvailable }
     private var pending: Bool { model.busyIDs.contains(binding.id) }
@@ -113,10 +114,17 @@ struct ClimateControls: View {
                     Image(systemName: "chevron.down").font(.caption2).foregroundStyle(.tertiary)
                 }
                 Text(title).font(.caption).foregroundStyle(.secondary)
-                Text(current.map(DeviceControlStyle.title) ?? "—").font(.headline).lineLimit(1)
+                Text(current.map(DeviceControlStyle.title) ?? "—").font(.headline.weight(.medium)).lineLimit(1)
             }
             .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.055), in: .rect(cornerRadius: 17))
+            .background(
+                Color.primary.opacity(usesHomePhoto ? 0.13 : 0.09),
+                in: .rect(cornerRadius: 17, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(usesHomePhoto ? 0.14 : 0.09), lineWidth: 1)
+            }
         }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
         .disabled(!enabled).accessibilityLabel("\(title)：\(current.map(DeviceControlStyle.title) ?? "未知")")
